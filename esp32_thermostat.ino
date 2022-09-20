@@ -1,100 +1,106 @@
 #include <IRremote.hpp>
 #include <DHT.h>
-#include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#include <WiFiClientSecure.h>
+#include <MQTTClient.h>
+#include <ArduinoJson.h>
+#include "WiFi.h"
 
-#include "html.h"
+// The MQTT topics that this device should publish/subscribe
+#define AWS_IOT_PUBLISH_TOPIC   "esp32/pub"
+#define AWS_IOT_SUBSCRIBE_TOPIC "esp32/sub"
+
+WiFiClientSecure net = WiFiClientSecure();
+MQTTClient client = MQTTClient(256);
+
 #include "secrets.h"
 
 constexpr int dht_pin = 16;
 
 DHT dht(dht_pin, DHT22);
 
-constexpr unsigned long readMillis = 2000;
+constexpr unsigned long readMillis = 60 * 1000;
 unsigned long lastRead = 0;
 
-float temperatureBuf[1440];
-size_t temperatureBuf_tail = 0;
-bool temperatureBuf_full = false;
+void connectAWS()
+{
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
+  Serial.print("Connecting to Wi-Fi");
 
-float humidityBuf[1440];
-size_t humidityBuf_tail = 0;
-bool humidityBuf_full = false;
+  while (WiFi.status() != WL_CONNECTED){
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
 
-// Instatiate the http server on port 80
-AsyncWebServer server(80);
+  // Configure WiFiClientSecure to use the AWS IoT device credentials
+  net.setCACert(AWS_CERT_CA);
+  net.setCertificate(AWS_CERT_CRT);
+  net.setPrivateKey(AWS_CERT_PRIVATE);
 
-void readSensors() {
-  temperatureBuf[temperatureBuf_tail] = dht.readTemperature();
-    temperatureBuf_tail++;
-    if (temperatureBuf_tail == sizeof(temperatureBuf)/sizeof(float)) {
-      temperatureBuf_tail = 0;
-      temperatureBuf_full = true;
-    }
+  // Connect to the MQTT broker on the AWS endpoint we defined earlier
+  client.begin(AWS_IOT_ENDPOINT, 8883, net);
 
-    float h = dht.readHumidity();
-    humidityBuf[humidityBuf_tail] = dht.readTemperature();
-    humidityBuf_tail++;
-    if (humidityBuf_tail == sizeof(humidityBuf)/sizeof(float)) {
-      humidityBuf_tail = 0;
-      humidityBuf_full = true;
-    }
+  // Create a message handler
+  client.onMessage(messageHandler);
+
+  Serial.print("Connecting to AWS IOT");
+
+  while (!client.connect(THINGNAME)) {
+    Serial.print(".");
+    delay(100);
+  }
+  Serial.println();
+
+  if(!client.connected()){
+    Serial.println("AWS IoT Timeout!");
+    return;
+  }
+
+  // Subscribe to a topic
+  client.subscribe(AWS_IOT_SUBSCRIBE_TOPIC);
+
+  Serial.println("AWS IoT Connected!");
 }
 
-void writeBuffer() {
-  if (temperatureBuf_full) {
-    for (size_t i=temperatureBuf_tail; i<sizeof(temperatureBuf)/sizeof(float); i++) {
-      // temperatureBuf[i];
-    }    
-  }
-  for (size_t i=0; i < temperatureBuf_tail; i++) {
-    // temperatureBuf[i];
-  }
+void publishMessage()
+{
+  StaticJsonDocument<200> doc;
+  doc["time"] = millis();
+  doc["temperature"] = dht.readTemperature();
+  doc["humidity"] = dht.readHumidity();
+  char jsonBuffer[512];
+  serializeJson(doc, jsonBuffer); // print to client
 
-  if (humidityBuf_full) {
-    for (size_t i=humidityBuf_tail; i<sizeof(humidityBuf)/sizeof(float); i++) {
-      // humidityBuf[i];
-    }    
-  }
-  for (size_t i=0; i < humidityBuf_tail; i++) {
-    // humidityBuf[i];
-  }
+  Serial.print("Publising to ");
+  Serial.print(AWS_IOT_PUBLISH_TOPIC);
+  Serial.print(": ");
+  Serial.println(jsonBuffer);
+  client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
 }
 
-// Replaces placeholders in html
-String processor(const String& var){
-  //Serial.println(var);
-  if(var == "TEMPERATURE"){
-     return String(temperatureBuf[temperatureBuf_tail]);
-  }
-  return String();
-}
+void messageHandler(String &topic, String &payload) {
+  Serial.println("incoming: " + topic + " - " + payload);
 
-void notFound(AsyncWebServerRequest *request) {
-  request->send(404, "text/plain", "Not found");
-}
-
-void router() {
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", index_html, processor);
-  });
-
-  server.onNotFound(notFound);
+//  StaticJsonDocument<200> doc;
+//  deserializeJson(doc, payload);
+//  const char* message = doc["message"];
 }
 
 void setup() {
   Serial.begin(115200);
+  connectAWS(); 
 
   dht.begin();
-
-  router();
-  server.begin();
 }
 
 void loop() {
   unsigned long timeNow = millis();
   if (timeNow - lastRead > readMillis) {
-    readSensors();
+    publishMessage();
+    client.loop();
+
+    lastRead = timeNow;
   }
 }
