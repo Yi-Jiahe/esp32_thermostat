@@ -5,6 +5,7 @@
 #include <ESPAsyncWebServer.h>
 
 #include "html.h"
+#include "secrets.h"
 
 constexpr int dht_pin = 16;
 
