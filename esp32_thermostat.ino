@@ -65,13 +65,7 @@ void writeBuffer() {
 String processor(const String& var){
   //Serial.println(var);
   if(var == "TEMPERATURE"){
-    return lastTemperature;
-  }
-  else if(var == "THRESHOLD"){
-    return inputMessage;
-  }
-  else if(var == "ENABLE_ARM_INPUT"){
-    return enableArmChecked;
+     return String(temperatureBuf[temperatureBuf_tail]);
   }
   return String();
 }
