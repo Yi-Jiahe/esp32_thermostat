@@ -67,13 +67,12 @@ void connectAWS()
 void publishMessage()
 {
   StaticJsonDocument<200> doc;
-  doc["time"] = millis();
   doc["temperature"] = dht.readTemperature();
   doc["humidity"] = dht.readHumidity();
   char jsonBuffer[512];
   serializeJson(doc, jsonBuffer); // print to client
 
-  Serial.print("Publising to ");
+  Serial.print("Publishing to ");
   Serial.print(AWS_IOT_PUBLISH_TOPIC);
   Serial.print(": ");
   Serial.println(jsonBuffer);
