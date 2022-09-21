@@ -5,21 +5,27 @@
 #include <ArduinoJson.h>
 #include "WiFi.h"
 
+#include "secrets.h"
+
 // The MQTT topics that this device should publish/subscribe
-#define AWS_IOT_PUBLISH_TOPIC   "esp32/pub"
+#define AWS_IOT_PUBLISH_TOPIC "device/%s/data"
 #define AWS_IOT_SUBSCRIBE_TOPIC "esp32/sub"
+
+char awsIoTPublishTopic[50];
 
 WiFiClientSecure net = WiFiClientSecure();
 MQTTClient client = MQTTClient(256);
-
-#include "secrets.h"
 
 constexpr int dht_pin = 16;
 
 DHT dht(dht_pin, DHT22);
 
-constexpr unsigned long readMillis = 60 * 1000;
-unsigned long lastRead = 0;
+// For some reason messages do not get published if the time between messages is too long.
+// 10s thereabout seems to be the limit
+// TODO: Handle disconnection and reconnect?
+constexpr unsigned long readMillis = 10 * 1000;
+// Immediately perform read. Rollover is handled by rollover-safe code
+unsigned long lastRead = 0 - readMillis;
 
 void connectAWS()
 {
@@ -73,10 +79,10 @@ void publishMessage()
   serializeJson(doc, jsonBuffer); // print to client
 
   Serial.print("Publishing to ");
-  Serial.print(AWS_IOT_PUBLISH_TOPIC);
+  Serial.print(awsIoTPublishTopic);
   Serial.print(": ");
   Serial.println(jsonBuffer);
-  client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
+  client.publish(awsIoTPublishTopic, jsonBuffer);
 }
 
 void messageHandler(String &topic, String &payload) {
@@ -89,6 +95,9 @@ void messageHandler(String &topic, String &payload) {
 
 void setup() {
   Serial.begin(115200);
+
+  sprintf(awsIoTPublishTopic, AWS_IOT_PUBLISH_TOPIC, THINGNAME);
+
   connectAWS(); 
 
   dht.begin();
