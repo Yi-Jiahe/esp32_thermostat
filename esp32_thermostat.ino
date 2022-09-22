@@ -20,12 +20,10 @@ constexpr int dht_pin = 16;
 
 DHT dht(dht_pin, DHT22);
 
-// For some reason messages do not get published if the time between messages is too long.
-// 10s thereabout seems to be the limit
-// TODO: Handle disconnection and reconnect?
-constexpr unsigned long readMillis = 10 * 1000;
-// Immediately perform read. Rollover is handled by rollover-safe code
-unsigned long lastRead = 0 - readMillis;
+constexpr unsigned long readMillis = 60 * 1000;
+
+TaskHandle_t EnvironmentalDataPublishingTask;
+TaskHandle_t ClientLoopTask;
 
 void connectAWS()
 {
@@ -93,6 +91,29 @@ void messageHandler(String &topic, String &payload) {
 //  const char* message = doc["message"];
 }
 
+void environmentalDataPublishing_task( void * parameter )
+{
+  Serial.print("Environmental data publishing task running on core ");
+  Serial.println(xPortGetCoreID());
+
+  for(;;){
+    // TODO: Figure out why first data point is always null
+    publishMessage();
+    vTaskDelay(readMillis / portTICK_PERIOD_MS);
+  }
+}
+
+void clientLoop_task( void * parameter )
+{
+  Serial.print("Client loop task running on core ");
+  Serial.println(xPortGetCoreID());
+
+  for(;;){
+    client.loop();
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -101,14 +122,13 @@ void setup() {
   connectAWS(); 
 
   dht.begin();
+  delay(1000);
+
+  xTaskCreatePinnedToCore(environmentalDataPublishing_task, "EnvironmentalDataPublishingTask", 20 * 1024, NULL, 1, &EnvironmentalDataPublishingTask, 0);
+  delay(100);                   
+  xTaskCreatePinnedToCore(clientLoop_task, "ClientLoopTask", 20 * 1024, NULL, 1, &ClientLoopTask, 0);                         
 }
 
 void loop() {
-  unsigned long timeNow = millis();
-  if (timeNow - lastRead > readMillis) {
-    publishMessage();
-    client.loop();
 
-    lastRead = timeNow;
-  }
 }
