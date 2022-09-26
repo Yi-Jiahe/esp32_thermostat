@@ -1,4 +1,3 @@
-#include <IRremote.hpp>
 #include <DHT.h>
 #include <WiFiClientSecure.h>
 #include <MQTTClient.h>
@@ -20,7 +19,7 @@ constexpr int dht_pin = 16;
 
 DHT dht(dht_pin, DHT22);
 
-constexpr unsigned long readMillis = 60 * 1000;
+constexpr unsigned long readMillis = 5 * 60 * 1000;
 
 TaskHandle_t EnvironmentalDataPublishingTask;
 TaskHandle_t ClientLoopTask;
