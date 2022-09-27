@@ -3,6 +3,7 @@
 #include <MQTTClient.h>
 #include <ArduinoJson.h>
 #include "WiFi.h"
+#include "MyBLEClass.h"
 
 #include "secrets.h"
 
@@ -23,6 +24,8 @@ constexpr unsigned long readMillis = 5 * 60 * 1000;
 
 TaskHandle_t EnvironmentalDataPublishingTask;
 TaskHandle_t ClientLoopTask;
+
+MyBLEClass BLEServer;
 
 void connectAWS()
 {
@@ -117,15 +120,18 @@ void setup() {
   Serial.begin(115200);
 
   sprintf(awsIoTPublishTopic, AWS_IOT_PUBLISH_TOPIC, THINGNAME);
-
   connectAWS(); 
 
   dht.begin();
   delay(1000);
 
   xTaskCreatePinnedToCore(environmentalDataPublishing_task, "EnvironmentalDataPublishingTask", 20 * 1024, NULL, 1, &EnvironmentalDataPublishingTask, 0);
-  delay(100);                   
+  delay(100);
   xTaskCreatePinnedToCore(clientLoop_task, "ClientLoopTask", 20 * 1024, NULL, 1, &ClientLoopTask, 0);                         
+  delay(100);
+
+  Serial.println("Initializing BLE");
+  BLEServer.init();
 }
 
 void loop() {
